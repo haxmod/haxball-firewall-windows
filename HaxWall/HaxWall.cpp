@@ -1,0 +1,280 @@
+// HaxWall: HaxBall firewall for Windows
+
+#include "stdafx.h"
+#include "ban.h"
+#include "PacketFilter.h"
+#include <Winsock2.h>
+#include <Mstcpip.h>
+#include <iostream>
+#include <list>
+#include <Iphlpapi.h>
+#include <Ws2tcpip.h>
+#include <cstdint>
+#include <signal.h>
+
+#pragma comment(lib, "Ws2_32.lib")
+#pragma comment(lib, "Iphlpapi.lib")
+
+PacketFilter pktFilter;
+
+void ListIpAddresses(std::list<SOCKADDR_IN*> &list)
+{
+	IP_ADAPTER_ADDRESSES* adapter_addresses(NULL);
+	IP_ADAPTER_ADDRESSES* adapter(NULL);
+
+	// Start with a 16 KB buffer and resize if needed -
+	// multiple attempts in case interfaces change while
+	// we are in the middle of querying them.
+	DWORD adapter_addresses_buffer_size = 16 * 1024;
+	for (int attempts = 0; attempts != 3; ++attempts)
+	{
+		adapter_addresses = (IP_ADAPTER_ADDRESSES*)malloc(adapter_addresses_buffer_size);
+
+		DWORD error = ::GetAdaptersAddresses(
+			AF_INET,
+			GAA_FLAG_SKIP_ANYCAST |
+			GAA_FLAG_SKIP_MULTICAST |
+			GAA_FLAG_SKIP_DNS_SERVER |
+			GAA_FLAG_SKIP_FRIENDLY_NAME,
+			NULL,
+			adapter_addresses,
+			&adapter_addresses_buffer_size);
+
+		if (ERROR_SUCCESS == error)
+		{
+			// We're done here, people!
+			break;
+		}
+		else if (ERROR_BUFFER_OVERFLOW == error)
+		{
+			// Try again with the new size
+			free(adapter_addresses);
+			adapter_addresses = NULL;
+
+			continue;
+		}
+		else
+		{
+			// Unexpected error code - log and throw
+			free(adapter_addresses);
+			adapter_addresses = NULL;
+			exit(1);
+		}
+	}
+
+	// Iterate through all of the adapters
+	for (adapter = adapter_addresses; NULL != adapter; adapter = adapter->Next)
+	{
+		// Skip loopback adapters
+		if (IF_TYPE_SOFTWARE_LOOPBACK == adapter->IfType)
+		{
+			continue;
+		}
+
+		// Parse all IPv4 and IPv6 addresses
+		for (
+			IP_ADAPTER_UNICAST_ADDRESS* address = adapter->FirstUnicastAddress;
+			NULL != address;
+			address = address->Next)
+		{
+			auto family = address->Address.lpSockaddr->sa_family;
+			if (AF_INET == family)
+			{
+				// IPv4
+				SOCKADDR_IN* ipv4 = reinterpret_cast<SOCKADDR_IN*>(address->Address.lpSockaddr);
+				list.push_back(ipv4);
+			}
+			else
+			{
+				// Skip all other types of addresses
+				continue;
+			}
+		}
+	}
+
+	// Cleanup
+	free(adapter_addresses);
+	adapter_addresses = NULL;
+}
+
+void ban(uint32_t saddr)
+{
+	char buf[INET_ADDRSTRLEN];
+	snprintf(buf, sizeof(buf), "%d.%d.%d.%d", (saddr >> 24) & 0xFF, (saddr >> 16) & 0xFF,
+		(saddr >> 8) & 0xFF, saddr & 0xFF);
+	pktFilter.Block(buf);
+}
+
+void unban(uint32_t saddr)
+{
+	char buf[INET_ADDRSTRLEN];
+	snprintf(buf, sizeof(buf), "%d.%d.%d.%d", (saddr >> 24) & 0xFF, (saddr >> 16) & 0xFF,
+		(saddr >> 8) & 0xFF, saddr & 0xFF);
+	pktFilter.Unblock(buf);
+}
+
+BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType)
+{
+	switch (dwCtrlType)
+	{
+		case CTRL_CLOSE_EVENT:
+		case CTRL_LOGOFF_EVENT:
+		case CTRL_SHUTDOWN_EVENT:
+		case CTRL_C_EVENT:
+			printf("Exiting...");
+			pktFilter.StopFirewall();
+			exit(0);
+			return TRUE;
+		default:
+			break;
+	}
+	return FALSE;
+}
+
+
+int main()
+{
+	// Start firewall.
+	if (pktFilter.StartFirewall())
+	{
+		printf("Packet filter started successfully...\n");
+	}
+	else
+	{
+		printf("Error starting packet filter. GetLastError() 0x%x", ::GetLastError());
+		exit(1);
+	}
+
+	if (!SetConsoleCtrlHandler(ConsoleHandlerRoutine, TRUE))
+	{
+		perror("Failed to set exit handler.");
+	}
+
+	WSAData wsa = { 0 };
+	WSAStartup(MAKEWORD(2, 2), &wsa);
+
+	std::list<SOCKADDR_IN*> bind_addrs;
+	ListIpAddresses(bind_addrs);
+	if (bind_addrs.size() == 0)
+	{
+		puts("Failed to find interface addresses");
+		exit(1);
+	}
+
+	SOCKET cap = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
+	if (bind(cap, (struct sockaddr*)bind_addrs.front(), sizeof(SOCKADDR_IN)) != 0)
+	{
+		perror("Failed to bind socket");
+		exit(1);
+	}
+	unsigned int opt = RCVALL_IPLEVEL;
+	DWORD ret;
+	if (WSAIoctl(cap, SIO_RCVALL, &opt, sizeof(opt), 0, 0, &ret, 0, 0) != 0)
+	{
+		perror("Failed to enable promiscuous mode.");
+		exit(1);
+	}
+	
+	unsigned char data[0xFFFF];
+
+	std::cout << "Firewall started. Keep this window open." << std::endl;
+	while (1)
+	{
+		int count = recvfrom(cap, (char *)data, sizeof(data), 0, NULL, NULL);
+		if (count != -1)
+		{
+			/*for (int i = 0; i < count; i++)
+			{
+				printf("%c ", data[i]);
+			}
+			puts("");*/
+
+			if (count < 20 || data[9] != 0x11) // Must be IP header with UDP payload
+			{
+				continue;
+			}
+
+			uint32_t saddr = ntohl(*((uint32_t*)(data + 12)));
+			uint32_t daddr = ntohl(*((uint32_t*)(data + 16)));
+			uint16_t sport = ntohs(*((uint16_t*)(data + 20)));
+			uint16_t dport = ntohs(*((uint16_t*)(data + 22)));
+
+			/*printf("Packet from %d.%d.%d.%d.\n", (saddr >> 24) & 0xFF, (saddr >> 16) & 0xFF,
+				(saddr >> 8) & 0xFF, saddr & 0xFF);*/
+
+			entry_t *entry = find_entry(saddr, NULL);
+			ban_entry_t *ban_entry = find_ban_entry(saddr, NULL);
+
+			if (entry == NULL)
+			{
+				printf("First seen: %d.%d.%d.%d.\n", (saddr >> 24) & 0xFF, (saddr >> 16) & 0xFF,
+					(saddr >> 8) & 0xFF, saddr & 0xFF);
+				new_entry(saddr, sport);
+			}
+			else
+			{
+				if (timed_out(entry))
+				{
+					initialize_entry(entry, saddr, sport);
+					// TODO: Unban
+				}
+				for (size_t i = 0; i < MAX_PORTS; i++)
+				{
+					if (entry->ports[i] == 0)
+					{
+						entry->ports[i] = sport;
+						time(&entry->ports_last[i]);
+						break;
+					}
+					if (entry->ports[i] == sport)
+					{
+						time(&entry->ports_last[i]);
+						break;
+					}
+					if (i == MAX_PORTS - 1)
+					{
+						if (ban_entry == NULL)
+						{
+							new_ban_entry(saddr, BAN_LENGTH_MULTIPORT);
+						}
+						else
+						{
+							initialize_ban_entry(ban_entry, saddr, BAN_LENGTH_MULTIPORT);
+						}
+						printf("Multiport attack detected from %d.%d.%d.%d.\n", (saddr >> 24) & 0xFF, (saddr >> 16) & 0xFF,
+							(saddr >> 8) & 0xFF, saddr & 0xFF);
+						ban(saddr);
+					}
+				}
+				entry->packet_count++;
+				if (++entry->last_time >= entry->times + MAX_PACKETS)
+				{
+					entry->last_time = &entry->times[0];
+				}
+				time(entry->last_time);
+				if (entry_hit_packet_limit(entry))
+				{
+					if (ban_entry == NULL)
+					{
+						new_ban_entry(saddr, BAN_LENGTH_FLOOD);
+						ban(saddr);
+						printf("Flood attack detected from %d.%d.%d.%d.\n", (saddr >> 24) & 0xFF, (saddr >> 16) & 0xFF,
+							(saddr >> 8) & 0xFF, saddr & 0xFF);
+					}
+					else
+					{
+						initialize_ban_entry(ban_entry, saddr, BAN_LENGTH_FLOOD);
+					}
+				}
+
+			}
+		}
+		else
+		{
+			std::cout << "An error occured." << std::endl;
+			return 1;
+		}
+	}
+    return 0;
+}
+
