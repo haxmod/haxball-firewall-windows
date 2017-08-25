@@ -189,7 +189,7 @@ int main()
 			}
 			puts("");*/
 
-			if (count < 20 || data[9] != 0x11) // Must be IP header with UDP payload
+			if (count < 28 || data[9] != 0x11) // Must be IP header with UDP payload
 			{
 				continue;
 			}
