@@ -161,17 +161,36 @@ int main()
 		exit(1);
 	}
 
-	SOCKET cap = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
-	if (bind(cap, (struct sockaddr*)bind_addrs.front(), sizeof(SOCKADDR_IN)) != 0)
+	FD_SET socket_set;
+	FD_ZERO(&socket_set);
+	bool bound = false;
+	std::list<SOCKET> sockets;
+	for (auto it = bind_addrs.begin(); it != bind_addrs.end(); it++)
 	{
-		perror("Failed to bind socket");
-		exit(1);
+		SOCKET sock = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
+		if (sock != INVALID_SOCKET)
+		{
+			if (bind(sock, (struct sockaddr*)*it, sizeof(SOCKADDR_IN)) != 0)
+			{
+				perror("Failed to bind socket");
+				continue;
+			}
+			unsigned int opt = RCVALL_IPLEVEL;
+			DWORD ret;
+			if (WSAIoctl(sock, SIO_RCVALL, &opt, sizeof(opt), 0, 0, &ret, 0, 0) != 0)
+			{
+				perror("Failed to enable promiscuous mode.");
+				continue;
+			}
+			FD_SET(sock, &socket_set);
+			sockets.push_back(sock);
+			bound = true;
+		}
 	}
-	unsigned int opt = RCVALL_IPLEVEL;
-	DWORD ret;
-	if (WSAIoctl(cap, SIO_RCVALL, &opt, sizeof(opt), 0, 0, &ret, 0, 0) != 0)
+
+	if (!bound)
 	{
-		perror("Failed to enable promiscuous mode.");
+		std::cerr << "Failed to listen on any interface" << std::endl;
 		exit(1);
 	}
 	
@@ -182,26 +201,38 @@ int main()
 	std::cout << "Firewall started. Keep this window open." << std::endl;
 	while (1)
 	{
-		int count = recvfrom(cap, (char *)data, sizeof(data), 0, NULL, NULL);
-		if (count != -1)
+		if (select(0, &socket_set, NULL, NULL, NULL) == SOCKET_ERROR)
 		{
-			if (count < 28 || data[9] != 0x11) // Must be IP header with UDP payload
+			std::cerr << "Error: Select failed. " << WSAGetLastError() << std::endl;
+			exit(1);
+		}
+		for (auto it = sockets.begin(); it != sockets.end(); it++)
+		{
+			if (!FD_ISSET(*it, &socket_set))
 			{
 				continue;
 			}
+			int count = recvfrom(*it, (char *)data, sizeof(data), 0, NULL, NULL);
+			if (count != -1)
+			{
+				if (count < 28 || data[9] != 0x11) // Must be IP header with UDP payload
+				{
+					continue;
+				}
 
-			uint32_t saddr = ntohl(*((uint32_t*)(data + 12)));
-			uint32_t daddr = ntohl(*((uint32_t*)(data + 16)));
-			uint16_t sport = ntohs(*((uint16_t*)(data + 20)));
-			uint16_t dport = ntohs(*((uint16_t*)(data + 22)));
+				uint32_t saddr = ntohl(*((uint32_t*)(data + 12)));
+				uint32_t daddr = ntohl(*((uint32_t*)(data + 16)));
+				uint16_t sport = ntohs(*((uint16_t*)(data + 20)));
+				uint16_t dport = ntohs(*((uint16_t*)(data + 22)));
 
-			fw.ReceivePacket(saddr, sport);
-			fw.ClearOldEntries();
-		}
-		else
-		{
-			std::cout << "An error occured." << std::endl;
-			return 1;
+				fw.ReceivePacket(saddr, sport);
+				fw.ClearOldEntries();
+			}
+			else
+			{
+				std::cout << "An error occured." << std::endl;
+				return 1;
+			}
 		}
 	}
     return 0;
