@@ -21,7 +21,7 @@
 #include <strsafe.h>
 #include <fwpmu.h>
 #include <list>
-#include <map>
+#include <unordered_map>
 #include <string>
 
 // Firewall sub-layer names.
@@ -60,7 +60,7 @@ private:
     // List of filters.
     IPFILTERINFOLIST m_lstFilters;
 
-	std::map<UINT32, UINT64> filterIds;
+	std::unordered_map<UINT32, UINT64> filterIds;
 
     // Method to get byte array format and hex format IP address from string format.
     bool ParseIPAddrString( char* szIpAddr, UINT nStrLen, BYTE* pbHostOrdr, UINT nByteLen, ULONG& uHexAddr );
@@ -71,9 +71,6 @@ private:
     // Method to bind/unbind to/from packet filter interface.
     DWORD BindUnbindInterface( bool bBind );
 
-    // Method to add/remove filter.
-    DWORD AddRemoveFilter( bool bAdd );
-
 public:
 
     // Constructor.
@@ -82,9 +79,10 @@ public:
     // Destructor.
     ~PacketFilter();
 
-    // Method to add IP addresses to m_lstFilters list.
+    // Method to block IP instantly
     DWORD Block(char* szIpAddrToBlock);
 
+	// Method to unblock IP instantly
 	DWORD Unblock(char* szIpAddr);
 
     // Method to start packet filter.

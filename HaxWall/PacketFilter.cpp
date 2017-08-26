@@ -128,80 +128,6 @@ DWORD PacketFilter::BindUnbindInterface( bool bBind )
 }
 
 /******************************************************************************
-PacketFilter::AddRemoveFilter - This method adds or removes a filter to an
-                                existing interface.
-*******************************************************************************/
-DWORD PacketFilter::AddRemoveFilter( bool bAdd )
-{
-    DWORD dwFwAPiRetCode = ERROR_BAD_COMMAND;
-    try
-    {
-        if( bAdd )
-        {
-            if( m_lstFilters.size() )
-            {
-                IPFILTERINFOLIST::iterator itFilters;
-                for( itFilters = m_lstFilters.begin(); itFilters != m_lstFilters.end(); itFilters++ )
-                {
-                    if( ( NULL != itFilters->bIpAddrToBlock ) && ( 0 != itFilters->uHexAddrToBlock ) )
-                    {
-                        FWPM_FILTER0 Filter = {0};
-                        FWPM_FILTER_CONDITION0 Condition = {0};
-                        FWP_V4_ADDR_AND_MASK AddrMask = {0};
-
-                        // Prepare filter condition.
-                        Filter.subLayerKey = m_subLayerGUID;
-                        Filter.displayData.name = FIREWALL_SERVICE_NAMEW;
-                        Filter.layerKey = FWPM_LAYER_INBOUND_TRANSPORT_V4;
-                        Filter.action.type = FWP_ACTION_BLOCK;
-                        Filter.weight.type = FWP_EMPTY;
-                        Filter.filterCondition = &Condition;
-                        Filter.numFilterConditions = 1;
-
-                        // Remote IP address should match itFilters->uHexAddrToBlock.
-                        Condition.fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
-                        Condition.matchType = FWP_MATCH_EQUAL;
-                        Condition.conditionValue.type = FWP_V4_ADDR_MASK;
-                        Condition.conditionValue.v4AddrMask = &AddrMask;
-
-                        // Add IP address to be blocked.
-                        AddrMask.addr = itFilters->uHexAddrToBlock;
-                        AddrMask.mask = VISTA_SUBNET_MASK;
-
-                        // Add filter condition to our interface. Save filter id in itFilters->u64VistaFilterId.
-                        dwFwAPiRetCode = ::FwpmFilterAdd0( m_hEngineHandle,
-                                                           &Filter,
-                                                           NULL,
-                                                           &(itFilters->u64VistaFilterId) );
-                    }
-                }
-            }
-        }
-        else
-        {
-            if( m_lstFilters.size() )
-            {
-                IPFILTERINFOLIST::iterator itFilters;
-                for( itFilters = m_lstFilters.begin(); itFilters != m_lstFilters.end(); itFilters++ )
-                {
-                    if( ( NULL != itFilters->bIpAddrToBlock ) && ( 0 != itFilters->uHexAddrToBlock ) )
-                    {
-                        // Delete all previously added filters.
-                        dwFwAPiRetCode = ::FwpmFilterDeleteById0( m_hEngineHandle,
-                                                                  itFilters->u64VistaFilterId );
-                        itFilters->u64VistaFilterId = 0;
-                    }
-                }
-            }
-        }
-    }
-    catch(...)
-    {
-    }
-    return dwFwAPiRetCode;
-}
-
-/******************************************************************************
 PacketFilter::ParseIPAddrString - This is an utility method to convert
                                   IP address in string format to byte array and
                                   hex formats.
@@ -328,7 +254,7 @@ DWORD PacketFilter::Unblock(char* szIpAddrToBlock)
 				stIPFilter.uHexAddrToBlock);
 			UINT32 ipVal = *((UINT32*)&stIPFilter.bIpAddrToBlock);
 
-			std::map<UINT32, UINT64>::iterator elm = filterIds.find(ipVal);
+			std::unordered_map<UINT32, UINT64>::iterator elm = filterIds.find(ipVal);
 			if ((NULL != stIPFilter.bIpAddrToBlock) && (0 != stIPFilter.uHexAddrToBlock) && elm != filterIds.end())
 			{
 				// Delete all previously added filters.
@@ -380,10 +306,6 @@ BOOL PacketFilter::StopFirewall()
     BOOL bStopped = FALSE;
     try
     {
-        // Remove all filters.
-        //AddRemoveFilter( false );
-        //m_lstFilters.clear();
-
 		for (auto it = filterIds.begin(); it != filterIds.end(); it++)
 		{
 			FwpmFilterDeleteById0(m_hEngineHandle, it->second);
@@ -404,51 +326,3 @@ BOOL PacketFilter::StopFirewall()
     }
     return bStopped;
 }
-
-#ifdef SAMPLE_APP
-/******************************************************************************
-main - Entry point.
-*******************************************************************************/
-void main()
-{
-    try
-    {
-        PacketFilter pktFilter;
-
-        // Add IP addresses which are to be blocked.
-        pktFilter.AddToBlockList( "209.160.73.61" );
-        pktFilter.AddToBlockList( "69.10.233.10" );
-
-        // Start firewall.
-        if( pktFilter.StartFirewall() )
-        {
-            printf( "\nFirewall started successfully...\n" );
-        }
-        else
-        {
-            printf( "\nError starting firewall. GetLastError() 0x%x", ::GetLastError() );
-        }
-
-        // Wait.
-        printf( "\nPress any key to stop firewall...\n" );
-        _getch();
-
-        // Stop firewall.
-        if( pktFilter.StopFirewall() )
-        {
-            printf( "\nFirewall stopped successfully...\n" );
-        }
-        else
-        {
-            printf( "\nError stopping firewall. GetLastError() 0x%x", ::GetLastError() );
-        }
-
-        // Quit.
-        printf( "\nPress any key to exit...\n" );
-        _getch();
-    }
-    catch(...)
-    {
-    }
-}
-#endif //SAMPLE_APP

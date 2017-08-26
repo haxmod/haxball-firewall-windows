@@ -177,18 +177,14 @@ int main()
 	
 	unsigned char data[0xFFFF];
 
+	AttackFirewall fw(ban, unban);
+
 	std::cout << "Firewall started. Keep this window open." << std::endl;
 	while (1)
 	{
 		int count = recvfrom(cap, (char *)data, sizeof(data), 0, NULL, NULL);
 		if (count != -1)
 		{
-			/*for (int i = 0; i < count; i++)
-			{
-				printf("%c ", data[i]);
-			}
-			puts("");*/
-
 			if (count < 28 || data[9] != 0x11) // Must be IP header with UDP payload
 			{
 				continue;
@@ -199,75 +195,8 @@ int main()
 			uint16_t sport = ntohs(*((uint16_t*)(data + 20)));
 			uint16_t dport = ntohs(*((uint16_t*)(data + 22)));
 
-			/*printf("Packet from %d.%d.%d.%d.\n", (saddr >> 24) & 0xFF, (saddr >> 16) & 0xFF,
-				(saddr >> 8) & 0xFF, saddr & 0xFF);*/
-
-			entry_t *entry = find_entry(saddr, NULL);
-			ban_entry_t *ban_entry = find_ban_entry(saddr, NULL);
-
-			if (entry == NULL)
-			{
-				printf("First seen: %d.%d.%d.%d.\n", (saddr >> 24) & 0xFF, (saddr >> 16) & 0xFF,
-					(saddr >> 8) & 0xFF, saddr & 0xFF);
-				new_entry(saddr, sport);
-			}
-			else
-			{
-				if (timed_out(entry))
-				{
-					initialize_entry(entry, saddr, sport);
-					// TODO: Unban
-				}
-				for (size_t i = 0; i < MAX_PORTS; i++)
-				{
-					if (entry->ports[i] == 0)
-					{
-						entry->ports[i] = sport;
-						time(&entry->ports_last[i]);
-						break;
-					}
-					if (entry->ports[i] == sport)
-					{
-						time(&entry->ports_last[i]);
-						break;
-					}
-					if (i == MAX_PORTS - 1)
-					{
-						if (ban_entry == NULL)
-						{
-							new_ban_entry(saddr, BAN_LENGTH_MULTIPORT);
-						}
-						else
-						{
-							initialize_ban_entry(ban_entry, saddr, BAN_LENGTH_MULTIPORT);
-						}
-						printf("Multiport attack detected from %d.%d.%d.%d.\n", (saddr >> 24) & 0xFF, (saddr >> 16) & 0xFF,
-							(saddr >> 8) & 0xFF, saddr & 0xFF);
-						ban(saddr);
-					}
-				}
-				entry->packet_count++;
-				if (++entry->last_time >= entry->times + MAX_PACKETS)
-				{
-					entry->last_time = &entry->times[0];
-				}
-				time(entry->last_time);
-				if (entry_hit_packet_limit(entry))
-				{
-					if (ban_entry == NULL)
-					{
-						new_ban_entry(saddr, BAN_LENGTH_FLOOD);
-						ban(saddr);
-						printf("Flood attack detected from %d.%d.%d.%d.\n", (saddr >> 24) & 0xFF, (saddr >> 16) & 0xFF,
-							(saddr >> 8) & 0xFF, saddr & 0xFF);
-					}
-					else
-					{
-						initialize_ban_entry(ban_entry, saddr, BAN_LENGTH_FLOOD);
-					}
-				}
-
-			}
+			fw.ReceivePacket(saddr, sport);
+			fw.ClearOldEntries();
 		}
 		else
 		{
