@@ -117,7 +117,7 @@ private:
 	void (*ban_function)(uint32_t);
 	void(*unban_function)(uint32_t);
 
-	void Print(char *msg, uint32_t addr)
+	void Print(const char *msg, uint32_t addr)
 	{
 		std::cout << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
 			((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << "." << std::endl;
