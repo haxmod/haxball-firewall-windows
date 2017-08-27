@@ -18,51 +18,26 @@ PacketFilter pktFilter;
 
 void ListIpAddresses(std::list<SOCKADDR_IN> &list)
 {
-	IP_ADAPTER_ADDRESSES* adapter_addresses(NULL);
-	IP_ADAPTER_ADDRESSES* adapter(NULL);
+	IP_ADAPTER_ADDRESSES adapter_addresses[0xFF];
+	DWORD adapter_addresses_buffer_size = sizeof(adapter_addresses);
 
-	// Start with a 16 KB buffer and resize if needed -
-	// multiple attempts in case interfaces change while
-	// we are in the middle of querying them.
-	DWORD adapter_addresses_buffer_size = 16 * 1024;
-	for (int attempts = 0; attempts != 3; ++attempts)
+	DWORD error = ::GetAdaptersAddresses(
+		AF_INET,
+		GAA_FLAG_SKIP_ANYCAST |
+		GAA_FLAG_SKIP_MULTICAST |
+		GAA_FLAG_SKIP_DNS_SERVER |
+		GAA_FLAG_SKIP_FRIENDLY_NAME,
+		NULL,
+		adapter_addresses,
+		&adapter_addresses_buffer_size);
+	
+	if (error != ERROR_SUCCESS)
 	{
-		adapter_addresses = (IP_ADAPTER_ADDRESSES*)malloc(adapter_addresses_buffer_size);
-
-		DWORD error = ::GetAdaptersAddresses(
-			AF_INET,
-			GAA_FLAG_SKIP_ANYCAST |
-			GAA_FLAG_SKIP_MULTICAST |
-			GAA_FLAG_SKIP_DNS_SERVER |
-			GAA_FLAG_SKIP_FRIENDLY_NAME,
-			NULL,
-			adapter_addresses,
-			&adapter_addresses_buffer_size);
-
-		if (ERROR_SUCCESS == error)
-		{
-			// We're done here, people!
-			break;
-		}
-		else if (ERROR_BUFFER_OVERFLOW == error)
-		{
-			// Try again with the new size
-			free(adapter_addresses);
-			adapter_addresses = NULL;
-
-			continue;
-		}
-		else
-		{
-			// Unexpected error code - log and throw
-			free(adapter_addresses);
-			adapter_addresses = NULL;
-			exit(1);
-		}
+		return;
 	}
 
 	// Iterate through all of the adapters
-	for (adapter = adapter_addresses; NULL != adapter; adapter = adapter->Next)
+	for (IP_ADAPTER_ADDRESSES* adapter = adapter_addresses; NULL != adapter; adapter = adapter->Next)
 	{
 		// Skip loopback adapters
 		if (IF_TYPE_SOFTWARE_LOOPBACK == adapter->IfType)
@@ -79,21 +54,11 @@ void ListIpAddresses(std::list<SOCKADDR_IN> &list)
 			auto family = address->Address.lpSockaddr->sa_family;
 			if (AF_INET == family)
 			{
-				// IPv4
 				SOCKADDR_IN* ipv4 = reinterpret_cast<SOCKADDR_IN*>(address->Address.lpSockaddr);
 				list.push_back(*ipv4);
 			}
-			else
-			{
-				// Skip all other types of addresses
-				continue;
-			}
 		}
 	}
-
-	// Cleanup
-	free(adapter_addresses);
-	adapter_addresses = NULL;
 }
 
 void ban(uint32_t saddr)
