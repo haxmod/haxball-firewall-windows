@@ -15,3 +15,8 @@ It should suffice to store the executable somewhere and run it whenever you are 
 ## Problems
 In case you have problems running the firewall, create a GitHub issue and describe your problem there.
 Make sure to include any relevant information about your operating system.
+
+## Screenshot
+Successfully running the firewall should look similar to this:
+
+![Screenshot](https://raw.githubusercontent.com/haxmod/binary-data/master/img/screenshot-windows.png)
