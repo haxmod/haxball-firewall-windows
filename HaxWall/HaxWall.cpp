@@ -5,19 +5,18 @@
 #include "PacketFilter.h"
 #include <Winsock2.h>
 #include <Mstcpip.h>
-#include <iostream>
-#include <list>
 #include <Iphlpapi.h>
 #include <Ws2tcpip.h>
 #include <cstdint>
-#include <signal.h>
+#include <iostream>
+#include <list>
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "Iphlpapi.lib")
 
 PacketFilter pktFilter;
 
-void ListIpAddresses(std::list<SOCKADDR_IN*> &list)
+void ListIpAddresses(std::list<SOCKADDR_IN> &list)
 {
 	IP_ADAPTER_ADDRESSES* adapter_addresses(NULL);
 	IP_ADAPTER_ADDRESSES* adapter(NULL);
@@ -82,7 +81,7 @@ void ListIpAddresses(std::list<SOCKADDR_IN*> &list)
 			{
 				// IPv4
 				SOCKADDR_IN* ipv4 = reinterpret_cast<SOCKADDR_IN*>(address->Address.lpSockaddr);
-				list.push_back(ipv4);
+				list.push_back(*ipv4);
 			}
 			else
 			{
@@ -131,33 +130,32 @@ BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType)
 	return FALSE;
 }
 
-
 int main()
 {
 	// Start firewall.
 	if (pktFilter.StartFirewall())
 	{
-		printf("Packet filter started successfully...\n");
+		std::cout << "Packet filter started successfully..." << std::endl;
 	}
 	else
 	{
-		printf("Error starting packet filter. GetLastError() 0x%x", ::GetLastError());
+		std::cerr << "Error starting packet filter: " << GetLastError() << std::endl;
 		exit(1);
 	}
 
 	if (!SetConsoleCtrlHandler(ConsoleHandlerRoutine, TRUE))
 	{
-		perror("Failed to set exit handler.");
+		std::cerr << "Failed to set exit handler." << std::endl;
 	}
 
 	WSAData wsa = { 0 };
 	WSAStartup(MAKEWORD(2, 2), &wsa);
 
-	std::list<SOCKADDR_IN*> bind_addrs;
+	std::list<SOCKADDR_IN> bind_addrs;
 	ListIpAddresses(bind_addrs);
 	if (bind_addrs.size() == 0)
 	{
-		puts("Failed to find interface addresses");
+		std::cerr << "Failed to find interface addresses" << std::endl;
 		exit(1);
 	}
 
@@ -170,16 +168,16 @@ int main()
 		SOCKET sock = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
 		if (sock != INVALID_SOCKET)
 		{
-			if (bind(sock, (struct sockaddr*)*it, sizeof(SOCKADDR_IN)) != 0)
+			if (bind(sock, (struct sockaddr*)&*it, sizeof(SOCKADDR_IN)) != 0)
 			{
-				perror("Failed to bind socket");
+				std::cerr << "Failed to bind socket: " << WSAGetLastError() << std::endl;
 				continue;
 			}
 			unsigned int opt = RCVALL_IPLEVEL;
 			DWORD ret;
 			if (WSAIoctl(sock, SIO_RCVALL, &opt, sizeof(opt), 0, 0, &ret, 0, 0) != 0)
 			{
-				perror("Failed to enable promiscuous mode.");
+				std::cerr << "Failed to enable promiscuous mode: " << WSAGetLastError() << std::endl;
 				continue;
 			}
 			FD_SET(sock, &socket_set);
@@ -198,7 +196,7 @@ int main()
 
 	AttackFirewall fw(ban, unban);
 
-	std::cout << "Firewall started. Keep this window open." << std::endl;
+	std::cout << "Firewall started. Keep this window open." << std::endl << std::endl;
 	while (1)
 	{
 		if (select(0, &socket_set, NULL, NULL, NULL) == SOCKET_ERROR)
@@ -230,7 +228,7 @@ int main()
 			}
 			else
 			{
-				std::cout << "An error occured." << std::endl;
+				std::cerr << "An error occured." << std::endl;
 				return 1;
 			}
 		}

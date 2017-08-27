@@ -1,14 +1,13 @@
 #pragma once
 // UDP Gaming Firewall
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <time.h>
+#include <cstdint>
+#include <ctime>
 #include <unordered_map>
 #include <unordered_set>
+#include <iostream>
 
-#define MAX_PORTS 4
+#define MAX_PORTS 3 // maximum number of source ports per client
 #define TIMEOUT 180 // seconds
 #define PURGE_INTERVAL 300 // seconds
 #define MAX_PACKETS 80 // per packet frame span (defined below)
@@ -19,12 +18,14 @@
 // On Windows, the purge interval defines the minimum ban durations because packets from
 // banned IP addresses are no longer received
 
+static time_t now;
+
 struct AddressStatistics
 {
 public:
 	time_t times[MAX_PACKETS];
 	size_t packet_count;
-	time_t *last_time;
+	size_t last_time;
 	std::unordered_map<uint16_t, time_t> ports;
 
 	AddressStatistics(uint16_t port)
@@ -34,9 +35,6 @@ public:
 
 	void RemoveOldPorts()
 	{
-		time_t now;
-		time(&now);
-		
 		for (auto it = ports.begin();  it != ports.end();)
 		{
 			double elapsed = difftime(now, it->second);
@@ -51,40 +49,37 @@ public:
 
 	void Reset(uint16_t port)
 	{
+		packet_count = 1;
 		ports.clear();
-		time_t tm;
-		time(&tm);
-		ports.insert(std::make_pair(port, tm));
-		last_time = &times[MAX_PACKETS - 1];
-		time(last_time);
+		last_time = 0;
+		times[last_time] = now;
+		ports.insert(std::make_pair(port, now));
 	}
 
 	bool TimedOut()
 	{
-		time_t now;
-		time(&now);
-		double elapsed = difftime(now, *last_time);
+		double elapsed = difftime(now, times[last_time]);
 		return elapsed > TIMEOUT;
 	}
 
 	void CountPacket()
 	{
 		packet_count++;
-		if (++last_time >= times + MAX_PACKETS)
+		if (++last_time >= MAX_PACKETS)
 		{
-			last_time = &times[0];
+			last_time = 0;
 		}
-		time(last_time);
+		times[last_time] = now;
 	}
 
 	bool HitLimit()
 	{
-		time_t *first_time = last_time + 1;
-		if (first_time > &times[MAX_PACKETS - 1])
+		size_t first_time = last_time + 1;
+		if (first_time >= MAX_PACKETS)
 		{
-			first_time = &times[0];
+			first_time = 0;
 		}
-		double diff = difftime(*last_time, *first_time);
+		double diff = difftime(times[last_time], times[first_time]);
 		return packet_count > MAX_PACKETS && diff < MAX_PACKET_FRAME;
 	}
 };
@@ -103,14 +98,11 @@ struct BanInfo
 public:
 	BanInfo(time_t duration)
 	{
-		time(&expiry);
-		expiry += duration;
+		expiry = now + duration;
 	}
 
 	bool TimedOut()
 	{
-		time_t now;
-		time(&now);
 		double elapsed = difftime(now, expiry);
 		return elapsed >= 0;
 	}
@@ -124,6 +116,12 @@ private:
 	time_t last_purge;
 	void (*ban_function)(uint32_t);
 	void(*unban_function)(uint32_t);
+
+	void Print(char *msg, uint32_t addr)
+	{
+		std::cout << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
+			((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << "." << std::endl;
+	}
 
 	bool IsSpecialAddress(uint32_t addr)
 	{
@@ -189,13 +187,14 @@ public:
 	{
 		table.reserve(0xFFFF);
 		bans.reserve(0xFFFF);
-		time(&last_purge);
+		last_purge = now;
 		ban_function = ban;
 		unban_function = unban;
 	}
 
 	BanStatus ReceivePacket(uint32_t addr, uint16_t port)
 	{
+		time(&now);
 		BanStatus result = BanStatus::Unbanned;
 		if (IsSpecialAddress(addr))
 		{
@@ -206,14 +205,13 @@ public:
 		{
 			if (ban->second.TimedOut())
 			{
-				printf("Unban %d.%d.%d.%d.\n", (addr >> 24) & 0xFF, (addr >> 16) & 0xFF,
-					(addr >> 8) & 0xFF, addr & 0xFF);
+				Print("Unban:", addr);
 				bans.erase(ban);
 				if (unban_function != NULL)
 				{
 					unban_function(addr);
 				}
-				result = BanStatus::Unban;
+				return BanStatus::Unban;
 			}
 			else
 			{
@@ -224,8 +222,7 @@ public:
 		auto entry = table.find(addr);
 		if (entry == table.end())
 		{
-			printf("First packet from %d.%d.%d.%d.\n", (addr >> 24) & 0xFF, (addr >> 16) & 0xFF,
-				(addr >> 8) & 0xFF, addr & 0xFF);
+			Print("First packet:", addr);
 			AddressStatistics entry(port);
 			table.insert(std::make_pair(addr, entry));
 			return BanStatus::Unbanned;
@@ -234,16 +231,14 @@ public:
 		{
 			if (entry->second.TimedOut())
 			{
-				printf("Reappearance of %d.%d.%d.%d.\n", (addr >> 24) & 0xFF, (addr >> 16) & 0xFF,
-					(addr >> 8) & 0xFF, addr & 0xFF);
+				Print("Reappearance:", addr);
 				entry->second.Reset(port);
 				return BanStatus::Unbanned;
 			}
 			entry->second.RemoveOldPorts();
-			if (entry->second.ports.size() >= MAX_PORTS)
+			if (entry->second.ports.size() > MAX_PORTS)
 			{
-				printf("Multiport attack from %d.%d.%d.%d.\n", (addr >> 24) & 0xFF, (addr >> 16) & 0xFF,
-					(addr >> 8) & 0xFF, addr & 0xFF);
+				Print("Multiport:", addr);
 				bans.insert(std::make_pair(addr, BanInfo(BAN_DURATION_MULTIPORT)));
 				table.erase(entry);
 				if (ban_function != NULL)
@@ -252,9 +247,7 @@ public:
 				}
 				return BanStatus::Ban;
 			}
-			time_t tm;
-			time(&tm);
-			entry->second.ports[port] = tm;
+			entry->second.ports[port] = now;
 
 			entry->second.CountPacket();
 			if (entry->second.HitLimit())
@@ -265,16 +258,15 @@ public:
 				{
 					ban_function(addr);
 				}
-				printf("Flood from %d.%d.%d.%d.\n", (addr >> 24) & 0xFF, (addr >> 16) & 0xFF,
-					(addr >> 8) & 0xFF, addr & 0xFF);
+				Print("Flood:", addr);
 				return BanStatus::Ban;
 			}
+			return BanStatus::Unbanned;
 		}
 	}
 
 	void ClearOldEntries()
 	{
-		time_t now;
 		time(&now);
 		if(difftime(now, last_purge) <= PURGE_INTERVAL)
 		{
@@ -310,7 +302,7 @@ public:
 				it++;
 			}
 		}
-		time(&last_purge);
+		last_purge = now;
 	}
 
 	~AttackFirewall()
