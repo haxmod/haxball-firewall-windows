@@ -1,6 +1,9 @@
 // HaxWall: HaxBall firewall for Windows
 
 #include "stdafx.h"
+
+#define BLOCK_DATA_CENTERS // uncomment flag when compiling flavors
+
 #include "ban.h"
 #include "PacketFilter.h"
 #include <Winsock2.h>
@@ -10,6 +13,7 @@
 #include <cstdint>
 #include <iostream>
 #include <list>
+#include "haxball_whitelist.h"
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "Iphlpapi.lib")
@@ -160,6 +164,13 @@ int main()
 	unsigned char data[0xFFFF];
 
 	AttackFirewall fw(ban, unban);
+
+#ifdef BLOCK_DATA_CENTERS
+	std::cout << "Data center blacklisting enabled." << std::endl;
+	fw.SetBlacklist(&DataCenters, &HaxBallMatcher);
+#else
+	std::cout << "Data center blacklisting disabled." << std::endl;
+#endif
 
 	std::cout << "Firewall started. Keep this window open." << std::endl << std::endl;
 	while (1)

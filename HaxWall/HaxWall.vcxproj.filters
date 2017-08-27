@@ -27,6 +27,15 @@
     <ClInclude Include="PacketFilter.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="cidr_matcher.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="data_centers.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="haxball_whitelist.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">

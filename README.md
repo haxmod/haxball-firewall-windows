@@ -8,7 +8,13 @@ This application makes use of application programming interfaces (APIs) which en
 They require elevated privileges because they can potentially be abused to spy on your network traffic.
 
 ## Download
-The most recent executable version can be found [here](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.3.0/HaxWall.exe).
+Now, the firewall comes in two flavors: Normal and Anti-VPN/Proxy.\
+The latter will also drop any traffic from IP addresses belonging to data centers. As a consequence, trolls using VPNs or proxies will not be able to connect to your room.
+
+|Flavor|Link| 
+|-|-| 
+|Normal|[Download](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.4.0/HaxWall.exe)|
+|Anti-VPN/Proxy|[Download](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.4.0/HaxWall-DC.exe)|
 
 It should suffice to store the executable somewhere and run it whenever you are hosting a room. If this is not the case, have a look at the section below.
 

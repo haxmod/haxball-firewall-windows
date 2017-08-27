@@ -6,14 +6,16 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <iostream>
+#include "cidr_matcher.h"
 
 #define MAX_PORTS 3 // maximum number of source ports per client
 #define TIMEOUT 180 // seconds
-#define PURGE_INTERVAL 300 // seconds
+#define PURGE_INTERVAL 3600 // seconds
 #define MAX_PACKETS 80 // per packet frame span (defined below)
 #define MAX_PACKET_FRAME 1 // seconds
 #define BAN_DURATION_MULTIPORT 300 // seconds
 #define BAN_DURATION_FLOOD 300 // seconds
+#define BAN_DURATION_BLACKLIST 3600 // seconds
 
 // On Windows, the purge interval defines the minimum ban durations because packets from
 // banned IP addresses are no longer received
@@ -116,11 +118,13 @@ private:
 	time_t last_purge;
 	void (*ban_function)(uint32_t);
 	void(*unban_function)(uint32_t);
+	CIDRMatcher *blacklist;
+	CIDRMatcher *exceptions;
 
 	void Print(const char *msg, uint32_t addr)
 	{
 		std::cout << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
-			((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << "." << std::endl;
+			((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << std::endl;
 	}
 
 	bool IsSpecialAddress(uint32_t addr)
@@ -185,11 +189,19 @@ private:
 public:
 	AttackFirewall(void(*ban)(uint32_t) = NULL, void(*unban)(uint32_t) = NULL)
 	{
+		blacklist = NULL;
+		exceptions = NULL;
 		table.reserve(0xFFFF);
 		bans.reserve(0xFFFF);
 		last_purge = now;
 		ban_function = ban;
 		unban_function = unban;
+	}
+
+	void SetBlacklist(CIDRMatcher *pBlacklist = NULL, CIDRMatcher *pExceptions = NULL)
+	{
+		blacklist = pBlacklist;
+		exceptions = pExceptions;
 	}
 
 	BanStatus ReceivePacket(uint32_t addr, uint16_t port)
@@ -222,6 +234,16 @@ public:
 		auto entry = table.find(addr);
 		if (entry == table.end())
 		{
+			if (blacklist && blacklist->Contains(addr) && (!exceptions || !exceptions->Contains(addr)))
+			{
+				bans.insert(std::make_pair(addr, BanInfo(BAN_DURATION_BLACKLIST)));
+				if (ban_function != NULL)
+				{
+					ban_function(addr);
+				}
+				Print("Blacklist:", addr);
+				return BanStatus::Ban;
+			}
 			Print("First packet:", addr);
 			AddressStatistics entry(port);
 			table.insert(std::make_pair(addr, entry));
