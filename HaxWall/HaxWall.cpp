@@ -2,7 +2,7 @@
 
 #include "stdafx.h"
 
-#define BLOCK_DATA_CENTERS // uncomment flag when compiling flavors
+//#define BLOCK_DATA_CENTERS // uncomment flag when compiling flavors
 
 #include "ban.h"
 #include "PacketFilter.h"
@@ -170,6 +170,7 @@ int main()
 	fw.SetBlacklist(&DataCenters, &HaxBallMatcher);
 #else
 	std::cout << "Data center blacklisting disabled." << std::endl;
+	fw.SetBlacklist(NULL, &HaxBallMatcher);
 #endif
 
 	std::cout << "Firewall started. Keep this window open." << std::endl << std::endl;
@@ -198,6 +199,13 @@ int main()
 				uint32_t daddr = ntohl(*((uint32_t*)(data + 16)));
 				uint16_t sport = ntohs(*((uint16_t*)(data + 20)));
 				uint16_t dport = ntohs(*((uint16_t*)(data + 22)));
+
+				if (sport < 1024 || dport < 1024 || dport == 3389) // Allow incoming and outgoing low port services like DNS and do not ban RDP packets.
+				{
+					// The source port check actually decreases the effectiveness of the firewall.
+					// However, the usual skid will hardly be able to make it around this check.
+					continue;
+				}
 
 				fw.ReceivePacket(saddr, sport);
 				fw.ClearOldEntries();

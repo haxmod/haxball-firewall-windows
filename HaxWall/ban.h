@@ -234,7 +234,7 @@ public:
 		auto entry = table.find(addr);
 		if (entry == table.end())
 		{
-			if (blacklist && blacklist->Contains(addr) && (!exceptions || !exceptions->Contains(addr)))
+			if (blacklist && blacklist->Contains(addr) || exceptions && exceptions->Contains(addr))
 			{
 				bans.insert(std::make_pair(addr, BanInfo(BAN_DURATION_BLACKLIST)));
 				if (ban_function != NULL)
