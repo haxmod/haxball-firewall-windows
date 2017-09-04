@@ -116,6 +116,7 @@ class AttackFirewall
 private:
 	std::unordered_map<uint32_t, AddressStatistics> table;
 	std::unordered_map<uint32_t, BanInfo> bans;
+	std::unordered_set<uint32_t> whitelist;
 	time_t last_purge;
 	void (*ban_function)(uint32_t);
 	void(*unban_function)(uint32_t);
@@ -204,6 +205,7 @@ public:
 		exceptions = NULL;
 		table.reserve(0xFFFF);
 		bans.reserve(0xFFFF);
+		whitelist.reserve(0xFFFF);
 		last_purge = now;
 		ban_function = ban;
 		unban_function = unban;
@@ -219,10 +221,11 @@ public:
 	{
 		time(&now);
 		BanStatus result = BanStatus::Unbanned;
-		if (IsSpecialAddress(addr))
+		if (IsSpecialAddress(addr) || whitelist.find(addr) != whitelist.end())
 		{
 			return result;
 		}
+
 		auto ban = bans.find(addr);
 		if (ban != bans.end())
 		{
@@ -245,7 +248,13 @@ public:
 		auto entry = table.find(addr);
 		if (entry == table.end())
 		{
-			if (blacklist && blacklist->Contains(addr) && (!exceptions || !exceptions->Contains(addr)))
+			if (exceptions && exceptions->Contains(addr))
+			{
+				Log("Whitelist:", addr);
+				whitelist.insert(addr);
+				return BanStatus::Unbanned;
+			}
+			if (blacklist && blacklist->Contains(addr))
 			{
 				bans.insert(std::make_pair(addr, BanInfo(BAN_DURATION_BLACKLIST)));
 				if (ban_function != NULL)
