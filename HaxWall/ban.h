@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <iostream>
+#include <fstream>
 #include "cidr_matcher.h"
 
 #define MAX_PORTS 3 // maximum number of source ports per client
@@ -120,11 +121,17 @@ private:
 	void(*unban_function)(uint32_t);
 	CIDRMatcher *blacklist;
 	CIDRMatcher *exceptions;
+	std::ofstream out;
 
-	void Print(const char *msg, uint32_t addr)
+	void Log(const char *msg, uint32_t addr)
 	{
 		std::cout << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
 			((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << std::endl;
+		if (out.is_open())
+		{
+			out << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
+				((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << std::endl;
+		}
 	}
 
 	bool IsSpecialAddress(uint32_t addr)
@@ -187,8 +194,12 @@ private:
 	}
 
 public:
-	AttackFirewall(void(*ban)(uint32_t) = NULL, void(*unban)(uint32_t) = NULL)
+	AttackFirewall(void(*ban)(uint32_t) = NULL, void(*unban)(uint32_t) = NULL) : out("firewall.log", std::ios::out)
 	{
+		if (out.is_open())
+		{
+			std::cout << "Logging to firewall.log." << std::endl;
+		}
 		blacklist = NULL;
 		exceptions = NULL;
 		table.reserve(0xFFFF);
@@ -217,7 +228,7 @@ public:
 		{
 			if (ban->second.TimedOut())
 			{
-				Print("Unban:", addr);
+				Log("Unban:", addr);
 				bans.erase(ban);
 				if (unban_function != NULL)
 				{
@@ -234,17 +245,17 @@ public:
 		auto entry = table.find(addr);
 		if (entry == table.end())
 		{
-			if (blacklist && blacklist->Contains(addr) || exceptions && exceptions->Contains(addr))
+			if (blacklist && blacklist->Contains(addr) && (!exceptions || !exceptions->Contains(addr)))
 			{
 				bans.insert(std::make_pair(addr, BanInfo(BAN_DURATION_BLACKLIST)));
 				if (ban_function != NULL)
 				{
 					ban_function(addr);
 				}
-				Print("Blacklist:", addr);
+				Log("Blacklist:", addr);
 				return BanStatus::Ban;
 			}
-			Print("First packet:", addr);
+			Log("First packet:", addr);
 			AddressStatistics entry(port);
 			table.insert(std::make_pair(addr, entry));
 			return BanStatus::Unbanned;
@@ -253,14 +264,14 @@ public:
 		{
 			if (entry->second.TimedOut())
 			{
-				Print("Reappearance:", addr);
+				Log("Reappearance:", addr);
 				entry->second.Reset(port);
 				return BanStatus::Unbanned;
 			}
 			entry->second.RemoveOldPorts();
 			if (entry->second.ports.size() > MAX_PORTS)
 			{
-				Print("Multiport:", addr);
+				Log("Multiport:", addr);
 				bans.insert(std::make_pair(addr, BanInfo(BAN_DURATION_MULTIPORT)));
 				table.erase(entry);
 				if (ban_function != NULL)
@@ -280,7 +291,7 @@ public:
 				{
 					ban_function(addr);
 				}
-				Print("Flood:", addr);
+				Log("Flood:", addr);
 				return BanStatus::Ban;
 			}
 			return BanStatus::Unbanned;
@@ -315,8 +326,7 @@ public:
 			if (it->second.TimedOut())
 			{
 				uint32_t addr = it->first;
-				printf("Unban %d.%d.%d.%d.\n", (addr >> 24) & 0xFF, (addr >> 16) & 0xFF,
-					(addr >> 8) & 0xFF, addr & 0xFF);
+				Log("Unban:", addr);
 				it = bans.erase(it);
 			}
 			else
@@ -329,6 +339,10 @@ public:
 
 	~AttackFirewall()
 	{
+		if (out.is_open())
+		{
+			out.close();
+		}
 		for (auto it = bans.begin(); it != bans.end(); it++)
 		{
 			if (unban_function != NULL)

@@ -89,7 +89,7 @@ BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType)
 		case CTRL_LOGOFF_EVENT:
 		case CTRL_SHUTDOWN_EVENT:
 		case CTRL_C_EVENT:
-			printf("Exiting...");
+			std::cout << "Exiting..." << std::endl;
 			pktFilter.StopFirewall();
 			exit(0);
 			return TRUE;
