@@ -124,17 +124,6 @@ private:
 	CIDRMatcher *exceptions;
 	std::ofstream out;
 
-	void Log(const char *msg, uint32_t addr)
-	{
-		std::cout << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
-			((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << std::endl;
-		if (out.is_open())
-		{
-			out << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
-				((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << std::endl;
-		}
-	}
-
 	bool IsSpecialAddress(uint32_t addr)
 	{
 		uint8_t b1, b2, b3, b4;
@@ -211,10 +200,26 @@ public:
 		unban_function = unban;
 	}
 
+	void AddWhitelist(uint32_t addr)
+	{
+		whitelist.insert(addr);
+	}
+
 	void SetBlacklist(CIDRMatcher *pBlacklist = NULL, CIDRMatcher *pExceptions = NULL)
 	{
 		blacklist = pBlacklist;
 		exceptions = pExceptions;
+	}
+
+	void Log(const char *msg, uint32_t addr)
+	{
+		std::cout << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
+			((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << std::endl;
+		if (out.is_open())
+		{
+			out << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
+				((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << std::endl;
+		}
 	}
 
 	BanStatus ReceivePacket(uint32_t addr, uint16_t port)

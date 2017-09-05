@@ -2,7 +2,7 @@
 
 #include "stdafx.h"
 
-//#define BLOCK_DATA_CENTERS // uncomment flag when compiling flavors
+#define BLOCK_DATA_CENTERS // uncomment flag when compiling flavors
 
 #include "ban.h"
 #include "PacketFilter.h"
@@ -109,7 +109,7 @@ int main()
 	else
 	{
 		std::cerr << "Error starting packet filter: " << GetLastError() << std::endl;
-		exit(1);
+		return 1;
 	}
 
 	if (!SetConsoleCtrlHandler(ConsoleHandlerRoutine, TRUE))
@@ -125,8 +125,11 @@ int main()
 	if (bind_addrs.size() == 0)
 	{
 		std::cerr << "Failed to find interface addresses" << std::endl;
-		exit(1);
+		return 1;
 	}
+
+	unsigned char data[0xFFFF];
+	AttackFirewall fw(ban, unban);
 
 	FD_SET socket_set;
 	FD_ZERO(&socket_set);
@@ -137,7 +140,8 @@ int main()
 		SOCKET sock = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
 		if (sock != INVALID_SOCKET)
 		{
-			if (bind(sock, (struct sockaddr*)&*it, sizeof(SOCKADDR_IN)) != 0)
+			SOCKADDR_IN bind_addr = *it;
+			if (bind(sock, (struct sockaddr*)&bind_addr, sizeof(SOCKADDR_IN)) != 0)
 			{
 				std::cerr << "Failed to bind socket: " << WSAGetLastError() << std::endl;
 				continue;
@@ -149,6 +153,18 @@ int main()
 				std::cerr << "Failed to enable promiscuous mode: " << WSAGetLastError() << std::endl;
 				continue;
 			}
+
+			unsigned int enable = 1;
+			if (setsockopt(sock, IPPROTO_IP, IP_HDRINCL, (char*)&enable, sizeof(enable)) != 0)
+			{
+				printf("Error setsockopt(): %d", WSAGetLastError());
+				continue;
+			}
+
+			uint32_t address = ntohl(*((uint32_t*)&bind_addr.sin_addr));
+			fw.AddWhitelist(address);
+			fw.Log("Protecting", address);
+
 			FD_SET(sock, &socket_set);
 			sockets.push_back(sock);
 			bound = true;
@@ -157,13 +173,9 @@ int main()
 
 	if (!bound)
 	{
-		std::cerr << "Failed to listen on any interface" << std::endl;
-		exit(1);
+		std::cerr << "Failed to listen on any interface." << std::endl;
+		return 1;
 	}
-	
-	unsigned char data[0xFFFF];
-
-	AttackFirewall fw(ban, unban);
 
 #ifdef BLOCK_DATA_CENTERS
 	std::cout << "Data center blacklisting enabled." << std::endl;
@@ -176,10 +188,10 @@ int main()
 	std::cout << "Firewall started. Keep this window open." << std::endl << std::endl;
 	while (1)
 	{
-		if (select(0, &socket_set, NULL, NULL, NULL) == SOCKET_ERROR)
+		if (select(sockets.size(), &socket_set, NULL, NULL, NULL) == SOCKET_ERROR)
 		{
 			std::cerr << "Error: Select failed. " << WSAGetLastError() << std::endl;
-			exit(1);
+			return 1;
 		}
 		for (auto it = sockets.begin(); it != sockets.end(); it++)
 		{
@@ -188,7 +200,7 @@ int main()
 				continue;
 			}
 			int count = recvfrom(*it, (char *)data, sizeof(data), 0, NULL, NULL);
-			if (count != -1)
+			if (count > 0)
 			{
 				if (count < 28 || data[9] != 0x11) // Must be IP header with UDP payload
 				{
