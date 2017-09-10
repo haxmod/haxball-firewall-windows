@@ -12,7 +12,7 @@
 #define MAX_PORTS 3 // maximum number of source ports per client
 #define TIMEOUT 60 // seconds
 #define PURGE_INTERVAL 90 // seconds
-#define MAX_PACKETS 30 // per packet frame span (defined below)
+#define MAX_PACKETS 50 // per packet frame span (defined below)
 #define MAX_PACKET_FRAME 1 // seconds
 #define BAN_DURATION_MULTIPORT 90 // seconds
 #define BAN_DURATION_FLOOD 90 // seconds
@@ -59,10 +59,10 @@ public:
 		ports.insert(std::make_pair(port, now));
 	}
 
-	bool TimedOut()
+	bool TimedOut(double timeout = TIMEOUT)
 	{
 		double elapsed = difftime(now, times[last_time]);
-		return elapsed > TIMEOUT;
+		return elapsed > timeout;
 	}
 
 	void CountPacket()
@@ -220,6 +220,16 @@ public:
 			out << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
 				((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << std::endl;
 		}
+	}
+
+	bool IsActive(uint32_t addr, unsigned int timeout = TIMEOUT)
+	{
+		auto entry = table.find(addr);
+		if (entry == table.end())
+		{
+			return false;
+		}
+		return !entry->second.TimedOut();
 	}
 
 	BanStatus ReceivePacket(uint32_t addr, uint16_t port)

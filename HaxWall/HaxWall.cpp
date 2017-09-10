@@ -18,6 +18,8 @@
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "Iphlpapi.lib")
 
+#define VERIFICATION_PORT 1337 // Port for signature verification service
+
 PacketFilter pktFilter;
 
 void ListIpAddresses(std::list<SOCKADDR_IN> &list)
@@ -132,9 +134,34 @@ int main()
 	AttackFirewall fw(ban, unban);
 
 	FD_SET socket_set;
+	FD_SET backup_set;
 	FD_ZERO(&socket_set);
+	FD_SET* current_set = &socket_set;
+	FD_SET* next_set = &backup_set;
+
 	bool bound = false;
 	std::list<SOCKET> sockets;
+
+	SOCKET verification_socket = socket(AF_INET, SOCK_DGRAM, 0);
+	struct sockaddr_in verification_addr;
+	verification_addr.sin_family = AF_INET;
+	verification_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	verification_addr.sin_port = htons(VERIFICATION_PORT);
+	u_long nonblocking = 1;
+	if (verification_socket == INVALID_SOCKET)
+	{
+		std::cerr << "Failed to start verification service." << std::endl;
+	}
+	else if (bind(verification_socket, (struct sockaddr*)&verification_addr, sizeof(verification_addr)) == SOCKET_ERROR)
+	{
+		std::cerr << "Failed to bind to verification service: " << WSAGetLastError() << std::endl;
+	}
+	else
+	{
+		FD_SET(verification_socket, &socket_set);
+		sockets.push_back(verification_socket);
+	}
+
 	for (auto it = bind_addrs.begin(); it != bind_addrs.end(); it++)
 	{
 		SOCKET sock = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
@@ -151,13 +178,6 @@ int main()
 			if (WSAIoctl(sock, SIO_RCVALL, &opt, sizeof(opt), 0, 0, &ret, 0, 0) != 0)
 			{
 				std::cerr << "Failed to enable promiscuous mode: " << WSAGetLastError() << std::endl;
-				continue;
-			}
-
-			unsigned int enable = 1;
-			if (setsockopt(sock, IPPROTO_IP, IP_HDRINCL, (char*)&enable, sizeof(enable)) != 0)
-			{
-				printf("Error setsockopt(): %d", WSAGetLastError());
 				continue;
 			}
 
@@ -186,22 +206,42 @@ int main()
 #endif
 
 	std::cout << "Firewall started. Keep this window open." << std::endl << std::endl;
+
+	struct sockaddr_in receiver;
+	int receiver_len = sizeof(receiver);
+
 	while (1)
 	{
-		if (select(sockets.size(), &socket_set, NULL, NULL, NULL) == SOCKET_ERROR)
+		FD_ZERO(next_set);
+		if (select(0, current_set, NULL, NULL, NULL) == SOCKET_ERROR)
 		{
 			std::cerr << "Error: Select failed. " << WSAGetLastError() << std::endl;
 			return 1;
 		}
 		for (auto it = sockets.begin(); it != sockets.end(); it++)
 		{
-			if (!FD_ISSET(*it, &socket_set))
+			FD_SET(*it, next_set);
+			if (!FD_ISSET(*it, current_set))
 			{
 				continue;
 			}
-			int count = recvfrom(*it, (char *)data, sizeof(data), 0, NULL, NULL);
+			int count = (*it != verification_socket) ? recvfrom(*it, (char *)data, sizeof(data), 0, NULL, NULL)
+				: recvfrom(*it, (char *)data, sizeof(data), 0, (struct sockaddr*)&receiver, &receiver_len);
 			if (count > 0)
 			{
+				if (*it == verification_socket)
+				{
+					if (count != 4)
+					{
+						continue;
+					}
+					uint32_t addr = ntohl(*((uint32_t*)data));
+					data[0] = fw.IsActive(addr) ? 1 : 0;
+					fw.Log("Query:", addr);
+					sendto(*it, (char*)data, 1, 0, (struct sockaddr*)&receiver, receiver_len);
+					continue;
+				}
+
 				if (count < 28 || data[9] != 0x11) // Must be IP header with UDP payload
 				{
 					continue;
@@ -227,6 +267,16 @@ int main()
 				std::cerr << "An error occured." << std::endl;
 				return 1;
 			}
+		}
+		if (current_set == &socket_set)
+		{
+			current_set = &backup_set;
+			next_set = &socket_set;
+		}
+		else
+		{
+			current_set = &socket_set;
+			next_set = &backup_set;
 		}
 	}
     return 0;
