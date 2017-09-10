@@ -10,12 +10,12 @@
 #include "cidr_matcher.h"
 
 #define MAX_PORTS 3 // maximum number of source ports per client
-#define TIMEOUT 180 // seconds
-#define PURGE_INTERVAL 3600 // seconds
-#define MAX_PACKETS 80 // per packet frame span (defined below)
+#define TIMEOUT 60 // seconds
+#define PURGE_INTERVAL 90 // seconds
+#define MAX_PACKETS 30 // per packet frame span (defined below)
 #define MAX_PACKET_FRAME 1 // seconds
-#define BAN_DURATION_MULTIPORT 300 // seconds
-#define BAN_DURATION_FLOOD 300 // seconds
+#define BAN_DURATION_MULTIPORT 90 // seconds
+#define BAN_DURATION_FLOOD 90 // seconds
 #define BAN_DURATION_BLACKLIST 3600 // seconds
 
 // On Windows, the purge interval defines the minimum ban durations because packets from

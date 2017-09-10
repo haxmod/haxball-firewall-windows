@@ -2,7 +2,7 @@
 
 #include "stdafx.h"
 
-#define BLOCK_DATA_CENTERS // uncomment flag when compiling flavors
+//#define BLOCK_DATA_CENTERS // uncomment flag when compiling flavors
 
 #include "ban.h"
 #include "PacketFilter.h"

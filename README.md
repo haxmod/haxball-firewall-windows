@@ -13,13 +13,17 @@ The latter will also drop any traffic from IP addresses belonging to data center
 
 |Flavor|Link| 
 |-|-| 
-|Normal|[Download](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.4.4/HaxWall.exe)|
-|Anti-VPN/Proxy|[Download](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.4.4/HaxWall-DC.exe)|
+|Normal|[Download](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.4.5/HaxWall.exe)|
+|Anti-VPN/Proxy|[Download](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.4.5/HaxWall-DC.exe)|
 
 It should suffice to store the executable somewhere and run it whenever you are hosting a room. If this is not the case, have a look at the section below.
 
 ## Problems
-In case you have problems running the firewall, create a GitHub issue and describe your problem there.
+### Missing IP address logging
+The firewall should display the IP addresses of players that join your room. Under certain unknown circumstances, the Windows Firewall might interfere with the HaxBall firewall.\
+If you do not see any IP address logs, retry running the HaxBall firewall with the Windows Firewall disabled.
+
+In case you have any other problems running the firewall, create a GitHub issue and describe your problem there.
 Make sure to include any relevant information about your operating system.
 
 ## Screenshot
