@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <iostream>
 #include <fstream>
+#include <iomanip>
 #include "cidr_matcher.h"
 
 #define MAX_PORTS 3 // maximum number of source ports per client
@@ -213,11 +214,14 @@ public:
 
 	void Log(const char *msg, uint32_t addr)
 	{
-		std::cout << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
+		auto t = std::time(nullptr);
+		std::tm tm{};
+		localtime_s(&tm, &t);
+		std::cout << "[" << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << "] " << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
 			((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << std::endl;
 		if (out.is_open())
 		{
-			out << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
+			out << "[" << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << "] " << msg << " " << ((addr >> 24) & 0xFF) << "." << ((addr >> 16) & 0xFF) << "." <<
 				((addr >> 8) & 0xFF) << "." << (addr & 0xFF) << std::endl;
 		}
 	}

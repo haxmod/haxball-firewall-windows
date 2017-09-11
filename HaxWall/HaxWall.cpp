@@ -22,6 +22,17 @@
 
 PacketFilter pktFilter;
 
+void DisableQuickEditMode()
+{
+	DWORD mode;
+	HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
+	GetConsoleMode(handle, &mode);
+	mode |= ENABLE_EXTENDED_FLAGS;
+	SetConsoleMode(handle, mode);
+	mode &= ~ENABLE_QUICK_EDIT_MODE;
+	SetConsoleMode(handle, mode);
+}
+
 void ListIpAddresses(std::list<SOCKADDR_IN> &list)
 {
 	IP_ADAPTER_ADDRESSES adapter_addresses[0xFF];
@@ -103,6 +114,8 @@ BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType)
 
 int main()
 {
+	DisableQuickEditMode(); // https://stackoverflow.com/q/30418886
+
 	// Start firewall.
 	if (pktFilter.StartFirewall())
 	{
