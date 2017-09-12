@@ -12,11 +12,11 @@
 
 #define MAX_PORTS 3 // maximum number of source ports per client
 #define TIMEOUT 60 // seconds
-#define PURGE_INTERVAL 90 // seconds
-#define MAX_PACKETS 50 // per packet frame span (defined below)
+#define PURGE_INTERVAL 30 // seconds
+#define MAX_PACKETS 80 // per packet frame span (defined below)
 #define MAX_PACKET_FRAME 1 // seconds
-#define BAN_DURATION_MULTIPORT 90 // seconds
-#define BAN_DURATION_FLOOD 90 // seconds
+#define BAN_DURATION_MULTIPORT 60 // seconds
+#define BAN_DURATION_FLOOD 60 // seconds
 #define BAN_DURATION_BLACKLIST 3600 // seconds
 
 // On Windows, the purge interval defines the minimum ban durations because packets from

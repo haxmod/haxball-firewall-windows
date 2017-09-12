@@ -13,8 +13,8 @@ The latter will also drop any traffic from IP addresses belonging to data center
 
 |Flavor|Link| 
 |-|-| 
-|Normal|[Download](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.4.7/HaxWall.exe)|
-|Anti-VPN/Proxy|[Download](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.4.7/HaxWall-DC.exe)|
+|Normal|[Download](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.4.8/HaxWall.exe)|
+|Anti-VPN/Proxy|[Download](https://github.com/haxmod/haxball-firewall-windows/releases/download/0.4.8/HaxWall-DC.exe)|
 
 It should suffice to store the executable somewhere and run it whenever you are hosting a room. If this is not the case, have a look at the section below.
 
